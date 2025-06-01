@@ -1,0 +1,242 @@
+
+import { useState, useEffect } from 'react';
+import SidebarNav from '@/components/SidebarNav';
+import Header from '@/components/Header';
+import StatsCard from '@/components/StatsCard';
+import StreakCard from '@/components/StreakCard';
+import ProgressChart from '@/components/ProgressChart';
+import ModuleCard from '@/components/ModuleCard';
+import QuizQuestion from '@/components/QuizQuestion';
+import SkillLevelFilter from '@/components/SkillLevelFilter';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { UserStats, ProgressDataPoint, Module, QuizQuestionData, UserProfile } from '@/types';
+import { fetchUserStats, fetchProgressData, fetchModules, fetchQuizQuestions, fetchUserProfile } from '@/lib/api';
+
+export default function Index() {
+  const [userStats, setUserStats] = useState<UserStats | null>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [progressData, setProgressData] = useState<ProgressDataPoint[]>([]);
+  const [modules, setModules] = useState<Module[]>([]);
+  const [allModules, setAllModules] = useState<Module[]>([]);
+  const [quizQuestions, setQuizQuestions] = useState<QuizQuestionData[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedSkillLevel, setSelectedSkillLevel] = useState<string | null>(null);
+
+  useEffect(() => {
+    const loadDashboardData = async () => {
+      try {
+        setLoading(true);
+        const [stats, profile, progress, mods, questions] = await Promise.all([
+          fetchUserStats(),
+          fetchUserProfile(),
+          fetchProgressData(),
+          fetchModules(),
+          fetchQuizQuestions()
+        ]);
+
+        setUserStats(stats);
+        setUserProfile(profile);
+        setProgressData(progress);
+        setAllModules(mods);
+        setModules(mods);
+        setQuizQuestions(questions);
+        setError(null);
+      } catch (err) {
+        console.error("Error fetching dashboard data:", err);
+        setError("Failed to load dashboard data. Please try again later.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadDashboardData();
+  }, []);
+
+  const handleSkillLevelChange = async (skillLevel: string | null) => {
+    setSelectedSkillLevel(skillLevel);
+    try {
+      const filteredModules = await fetchModules(skillLevel || undefined);
+      setModules(filteredModules);
+      
+      const filteredQuestions = await fetchQuizQuestions(undefined, skillLevel || undefined);
+      setQuizQuestions(filteredQuestions);
+    } catch (err) {
+      console.error("Error filtering content:", err);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-900 text-white">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-cyber-neon-purple mx-auto mb-4"></div>
+          <p>Loading your learning dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-900 text-red-500">
+        <div className="text-center">
+          <p className="text-xl mb-4">{error}</p>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="cyber-btn"
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen flex">
+      <SidebarNav />
+
+      <div className="flex-1 ml-64 p-6 bg-cyber-bg text-cyber-text-primary">
+        <Header />
+
+        <Tabs defaultValue="dashboard" className="space-y-6">
+          <TabsList className="mb-6 bg-cyber-bg-light border border-cyber-neon-purple/20">
+            <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
+            <TabsTrigger value="modules">Modules</TabsTrigger>
+            <TabsTrigger value="practice">Practice</TabsTrigger>
+            <TabsTrigger value="paths">Learning Paths</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="dashboard" className="space-y-6 animate-slide-in">
+            {/* User Stats */}
+            {userStats && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <StatsCard
+                  title="Total Points"
+                  value={userStats.totalPoints.toString()}
+                  subtitle={`Trend: ${userStats.trend.positive ? '+' : '-'}${userStats.trend.value}%`}
+                  trend={userStats.trend}
+                />
+                <StatsCard
+                  title="Questions Solved"
+                  value={userStats.questionsSolved.toString()}
+                  subtitle="Keep it up!"
+                  trend={{ value: 0, positive: true }}
+                />
+                <StatsCard
+                  title="Accuracy Rate"
+                  value={`${userStats.accuracyRate}%`}
+                  subtitle="Aim for 90%!"
+                  trend={{ value: 0, positive: true }}
+                />
+              </div>
+            )}
+
+            {/* Progress Chart and Streak */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {progressData.length > 0 && <ProgressChart data={progressData} className="md:col-span-2" />}
+              {userProfile && <StreakCard currentStreak={userProfile.currentStreak} maxStreak={12} />}
+            </div>
+
+            {/* Continue Learning Section */}
+            <div>
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-semibold">Continue Learning</h2>
+                <div className="flex items-center gap-4">
+                  {!userProfile?.isPremium && (
+                    <button className="cyber-btn bg-gradient-to-r from-yellow-500 to-orange-500 text-white">
+                      Upgrade to Premium
+                    </button>
+                  )}
+                  <a href="#" className="cyber-link text-sm">View All</a>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                {modules.slice(0, 4).map((module, index) => (
+                  <ModuleCard
+                    key={index}
+                    {...module}
+                    isLocked={module.isPremium && !userProfile?.isPremium}
+                  />
+                ))}
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="modules" className="animate-slide-in space-y-6">
+            {/* Skill Level Filter */}
+            <div className="flex justify-between items-center">
+              <h2 className="text-xl font-semibold">All Modules</h2>
+              <SkillLevelFilter onSkillLevelChange={handleSkillLevelChange} />
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+              {modules.map((module, index) => (
+                <ModuleCard
+                  key={index}
+                  {...module}
+                  isLocked={module.isPremium && !userProfile?.isPremium}
+                />
+              ))}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="practice" className="animate-slide-in space-y-6">
+            <div className="flex justify-between items-center">
+              <h2 className="text-xl font-semibold">Practice Questions</h2>
+              <SkillLevelFilter onSkillLevelChange={handleSkillLevelChange} />
+            </div>
+            
+            {quizQuestions.length > 0 ? (
+              <div className="space-y-6">
+                {quizQuestions.slice(0, 3).map((question) => (
+                  <QuizQuestion key={question.id} {...question} />
+                ))}
+                
+                {quizQuestions.length > 3 && (
+                  <div className="text-center">
+                    <button className="cyber-btn">Load More Questions</button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <p className="text-cyber-text-secondary mb-4">
+                  No practice questions available for the selected skill level.
+                </p>
+                <button 
+                  onClick={() => handleSkillLevelChange(null)}
+                  className="cyber-btn"
+                >
+                  Show All Questions
+                </button>
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="paths" className="animate-slide-in space-y-6">
+            <div>
+              <h2 className="text-xl font-semibold mb-4">Learning Paths</h2>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="cyber-card">
+                  <h3 className="text-lg font-medium mb-2">Frontend Fundamentals</h3>
+                  <p className="text-sm text-cyber-text-secondary mb-4">
+                    Perfect for beginners starting their frontend journey
+                  </p>
+                  <div className="flex items-center gap-2 mb-4">
+                    <span className="text-xs px-2 py-1 rounded-full bg-green-500/20 text-green-400">
+                      Beginner
+                    </span>
+                    <span className="text-xs text-cyber-text-secondary">12-16 hours</span>
+                  </div>
+                  <button className="cyber-btn w-full">Start Path</button>
+                </div>
+              </div>
+            </div>
+          </TabsContent>
+        </Tabs>
+      </div>
+    </div>
+  );
+}
