@@ -39,3 +39,13 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+dist/
+
+# IDE
+.vscode
+.idea
+
+# Temp files
+.temp/
+tmp/
+*.tmp
